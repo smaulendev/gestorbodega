@@ -1,4 +1,5 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateLoteDto } from './create-lote.dto';
-
-export class UpdateLoteDto extends PartialType(CreateLoteDto) {}
+export class UpdateLoteDto {
+  codigoLote?: string;
+  fechaCaducidad?: string;
+  productoId?: number;
+}

@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { BodegasService } from './bodegas.service';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Bodega } from './entities/bodega.entity';
 import { BodegasController } from './bodegas.controller';
+import { BodegasService } from './bodegas.service';
 
 @Module({
+  imports: [TypeOrmModule.forFeature([Bodega])],
+  controllers: [BodegasController],
   providers: [BodegasService],
-  controllers: [BodegasController]
 })
 export class BodegasModule {}

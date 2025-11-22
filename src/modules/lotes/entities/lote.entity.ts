@@ -7,8 +7,9 @@ export class Lote {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
-  codigoLote: string;
+@Column({ unique: true })
+codigoLote: string;
+
 
   @Column()
   fechaCaducidad: Date;

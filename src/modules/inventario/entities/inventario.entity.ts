@@ -150,4 +150,8 @@ export class Inventario {
 
   @Column()
   ubicacionId: number;
+
+  @Column({ type: 'int', default: 0 })
+cantidad: number;
+
 }

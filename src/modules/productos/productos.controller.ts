@@ -22,10 +22,16 @@ export class ProductosController {
     return this.productosService.create(dto);
   }
 
+  // @Patch(':id')
+  // update(@Param('id') id: string, @Body() dto: UpdateProductoDto) {
+  //   return this.productosService.update(+id, dto);
+  // }
+
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateProductoDto) {
-    return this.productosService.update(+id, dto);
-  }
+update(@Param('id') id: string, @Body() updateProductoDto: CreateProductoDto) {
+  return this.productosService.update(+id, updateProductoDto);
+}
+
 
   @Delete(':id')
   remove(@Param('id') id: string) {

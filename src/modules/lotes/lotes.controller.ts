@@ -37,4 +37,10 @@ export class LotesController {
   obtenerLoteFEFO(@Param('productoId') productoId: string) {
     return this.lotesService.obtenerLoteFEFO(+productoId);
   }
+
+@Get('producto/:id')
+findByProducto(@Param('id') id: string) {
+  return this.lotesService.findByProducto(Number(id));
+}
+
 }

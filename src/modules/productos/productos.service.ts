@@ -27,15 +27,24 @@ export class ProductosService {
     return await this.productoRepo.save(nuevo);
   }
 
-  async update(id: number, dto: UpdateProductoDto): Promise<Producto> {
-    const producto = await this.findOne(id);
-    Object.assign(producto, dto);
-    return await this.productoRepo.save(producto);
-  }
+  // async update(id: number, dto: UpdateProductoDto): Promise<Producto> {
+  //   const producto = await this.findOne(id);
+  //   Object.assign(producto, dto);
+  //   return await this.productoRepo.save(producto);
+  // }
 
   async remove(id: number): Promise<{ message: string }> {
     const producto = await this.findOne(id);
     await this.productoRepo.remove(producto);
     return { message: `Producto ${id} eliminado correctamente` };
   }
+
+  async update(id: number, dto: CreateProductoDto) {
+  const producto = await this.productoRepo.findOneBy({ id });
+  if (!producto) throw new NotFoundException('Producto no encontrado');
+
+  Object.assign(producto, dto);
+  return this.productoRepo.save(producto);
+}
+
 }

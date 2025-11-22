@@ -1,13 +1,21 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+// ENTIDADES
 import { Inventario } from './entities/inventario.entity';
+import { MovimientoInventario } from './entities/movimiento-inventario.entity';
 import { Producto } from '../productos/entities/producto.entity';
 import { Lote } from '../lotes/entities/lote.entity';
 import { Bodega } from '../bodegas/entities/bodega.entity';
 import { Ubicacion } from '../ubicaciones/entities/ubicacion.entity';
 
+// DTO
 import { IngresarStockDto } from './dto/ingresar-stock.dto';
 
 @Injectable()
@@ -27,104 +35,139 @@ export class InventarioService {
 
     @InjectRepository(Ubicacion)
     private readonly ubicacionRepo: Repository<Ubicacion>,
+
+    @InjectRepository(MovimientoInventario)
+    private readonly movimientoRepo: Repository<MovimientoInventario>,
   ) {}
 
-  /**
-   * =============================
-   *   INGRESO DE STOCK A BODEGA
-   * =============================
-   */
+  // ============================================================
+  // 📌 INGRESAR STOCK
+  // ============================================================
   async ingresarStock(dto: IngresarStockDto) {
-    const { cantidad, productoId, loteId, bodegaId, ubicacionId } = dto;
+    const { cantidad, productoId, loteId, bodegaId, ubicacionId, descripcion } =
+      dto;
 
-    // 1) Validar PRODUCTO
-    const producto = await this.productoRepo.findOne({ where: { id: productoId } });
-    if (!producto) throw new NotFoundException(`El producto ${productoId} no existe`);
+    // -------------------------------------------------------------------
+    // 1️⃣ VALIDACIONES
+    // -------------------------------------------------------------------
 
-    // 2) Validar LOTE
-    const lote = await this.loteRepo.findOne({ where: { id: loteId } });
-    if (!lote) throw new NotFoundException(`El lote ${loteId} no existe`);
+    const producto = await this.productoRepo.findOne({
+      where: { id: productoId },
+    });
+    if (!producto)
+      throw new NotFoundException({
+        statusCode: 404,
+        errorCode: 'PRODUCT_NOT_FOUND',
+        message: `El producto con ID ${productoId} no existe.`,
+      });
 
-    if (lote.productoId !== productoId) {
-      throw new BadRequestException(`El lote pertenece a otro producto`);
-    }
+    const lote = await this.loteRepo.findOne({
+      where: { id: loteId },
+    });
+    if (!lote)
+      throw new NotFoundException({
+        statusCode: 404,
+        errorCode: 'LOT_NOT_FOUND',
+        message: `El lote con ID ${loteId} no existe.`,
+      });
 
-    // 3) Validar BODEGA
-    const bodega = await this.bodegaRepo.findOne({ where: { id: bodegaId } });
-    if (!bodega) throw new NotFoundException(`La bodega ${bodegaId} no existe`);
+    const bodega = await this.bodegaRepo.findOne({
+      where: { id: bodegaId },
+    });
+    if (!bodega)
+      throw new NotFoundException({
+        statusCode: 404,
+        errorCode: 'WAREHOUSE_NOT_FOUND',
+        message: `La bodega con ID ${bodegaId} no existe.`,
+      });
 
-    // 4) Validar UBICACIÓN
-    const ubicacion = await this.ubicacionRepo.findOne({ where: { id: ubicacionId } });
-    if (!ubicacion) throw new NotFoundException(`La ubicación ${ubicacionId} no existe`);
+    const ubicacion = await this.ubicacionRepo.findOne({
+      where: { id: ubicacionId },
+    });
+    if (!ubicacion)
+      throw new NotFoundException({
+        statusCode: 404,
+        errorCode: 'LOCATION_NOT_FOUND',
+        message: `La ubicación con ID ${ubicacionId} no existe.`,
+      });
 
-    // 5) Buscar inventario ya existente (producto + lote + bodega + ubicación)
-    let inventario = await this.inventarioRepo.findOne({
-      where: { productoId, loteId, bodegaId, ubicacionId },
+    if (cantidad <= 0)
+      throw new BadRequestException({
+        statusCode: 400,
+        errorCode: 'INVALID_QTY',
+        message: 'La cantidad debe ser mayor a 0.',
+      });
+
+    // -------------------------------------------------------------------
+    // 2️⃣ BUSCAR INVENTARIO EXISTENTE
+    // -------------------------------------------------------------------
+
+    const inv = await this.inventarioRepo.findOne({
+      where: {
+        producto: { id: producto.id },
+        lote: { id: lote.id },
+        bodega: { id: bodega.id },
+        ubicacion: { id: ubicacion.id },
+      },
+      relations: ['producto', 'lote', 'bodega', 'ubicacion'],
     });
 
-    // 6) Crear o sumar cantidad
-    if (!inventario) {
-      inventario = this.inventarioRepo.create({
-        productoId,
-        loteId,
-        bodegaId,
-        ubicacionId,
+    // -------------------------------------------------------------------
+    // 3️⃣ SI EXISTE ➜ SUMA / SI NO ➜ CREA
+    // -------------------------------------------------------------------
+
+    if (inv) {
+      inv.cantidad += cantidad;
+      inv.cantidadDisponible += cantidad;
+
+      await this.inventarioRepo.save(inv);
+    } else {
+      const nuevo = this.inventarioRepo.create({
+        cantidad,
         cantidadDisponible: cantidad,
         cantidadReservada: 0,
         cantidadTransito: 0,
+        estadoStock: 'Disponible',
+        producto,
+        lote,
+        bodega,
+        ubicacion,
       });
-    } else {
-      inventario.cantidadDisponible += cantidad;
+
+      await this.inventarioRepo.save(nuevo);
     }
 
-    // 7) Calcular estado del stock
-    inventario.estadoStock =
-      inventario.cantidadDisponible <= 0
-        ? 'Agotado'
-        : inventario.cantidadDisponible <= 5
-        ? 'Crítico'
-        : 'Disponible';
+    // -------------------------------------------------------------------
+    // 4️⃣ REGISTRAR MOVIMIENTO
+    // -------------------------------------------------------------------
 
-    // 8) Guardar registro final
-    return await this.inventarioRepo.save(inventario);
-  }
-
-  /**
-   * =============================
-   *      LISTAR INVENTARIO
-   * =============================
-   */
-  async findAll() {
-    return this.inventarioRepo.find({
-      relations: ['producto', 'lote', 'bodega', 'ubicacion'],
-    });
-  }
-
-  /**
-   * =============================
-   *     OBTENER INVENTARIO ID
-   * =============================
-   */
-  async findOne(id: number) {
-    const inv = await this.inventarioRepo.findOne({
-      where: { id },
-      relations: ['producto', 'lote', 'bodega', 'ubicacion'],
+    const movimiento = this.movimientoRepo.create({
+      tipoMovimiento: 'INGRESO',
+      cantidad,
+      descripcion: descripcion ?? 'Ingreso de stock',
+      productoId: producto.id,
+      loteId: lote.id,
+      bodegaId: bodega.id,
+      ubicacionId: ubicacion.id,
+      usuarioId: null, // luego conectamos con auth
     });
 
-    if (!inv) throw new NotFoundException(`Inventario ${id} no existe`);
-    return inv;
-  }
+    await this.movimientoRepo.save(movimiento);
 
-  /**
-   * =============================
-   *     ELIMINAR INVENTARIO
-   * =============================
-   */
-  async remove(id: number) {
-    const existe = await this.inventarioRepo.findOne({ where: { id } });
-    if (!existe) throw new NotFoundException(`Inventario ${id} no existe`);
+    // -------------------------------------------------------------------
+    // 5️⃣ RESPUESTA PROFESIONAL
+    // -------------------------------------------------------------------
 
-    await this.inventarioRepo.delete(id);
-    return { message: 'Eliminado correctamente' };
+    return {
+      statusCode: 201,
+      message: 'Stock ingresado correctamente.',
+      detalle: {
+        producto: producto.nombre,
+        lote: lote.codigoLote ?? lote.id,
+        bodega: bodega.nombre,
+        ubicacion: ubicacion.nombre,
+        cantidadIngresada: cantidad,
+      },
+    };
   }
 }
