@@ -2,7 +2,6 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -40,20 +39,17 @@ export class InventarioService {
     private readonly movimientoRepo: Repository<MovimientoInventario>,
   ) {}
 
-  // ============================================================
-  // 📌 INGRESAR STOCK
-  // ============================================================
+  // =====================================================================
+  // 📌 1) INGRESAR STOCK
+  // =====================================================================
   async ingresarStock(dto: IngresarStockDto) {
     const { cantidad, productoId, loteId, bodegaId, ubicacionId, descripcion } =
       dto;
 
-    // -------------------------------------------------------------------
-    // 1️⃣ VALIDACIONES
-    // -------------------------------------------------------------------
-
-    const producto = await this.productoRepo.findOne({
-      where: { id: productoId },
-    });
+    // ------------------------------------------------------------
+    // 1️⃣ VALIDAR ENTIDADES
+    // ------------------------------------------------------------
+    const producto = await this.productoRepo.findOne({ where: { id: productoId } });
     if (!producto)
       throw new NotFoundException({
         statusCode: 404,
@@ -61,9 +57,7 @@ export class InventarioService {
         message: `El producto con ID ${productoId} no existe.`,
       });
 
-    const lote = await this.loteRepo.findOne({
-      where: { id: loteId },
-    });
+    const lote = await this.loteRepo.findOne({ where: { id: loteId } });
     if (!lote)
       throw new NotFoundException({
         statusCode: 404,
@@ -71,9 +65,7 @@ export class InventarioService {
         message: `El lote con ID ${loteId} no existe.`,
       });
 
-    const bodega = await this.bodegaRepo.findOne({
-      where: { id: bodegaId },
-    });
+    const bodega = await this.bodegaRepo.findOne({ where: { id: bodegaId } });
     if (!bodega)
       throw new NotFoundException({
         statusCode: 404,
@@ -98,11 +90,10 @@ export class InventarioService {
         message: 'La cantidad debe ser mayor a 0.',
       });
 
-    // -------------------------------------------------------------------
+    // ------------------------------------------------------------
     // 2️⃣ BUSCAR INVENTARIO EXISTENTE
-    // -------------------------------------------------------------------
-
-    const inv = await this.inventarioRepo.findOne({
+    // ------------------------------------------------------------
+    const inventario = await this.inventarioRepo.findOne({
       where: {
         producto: { id: producto.id },
         lote: { id: lote.id },
@@ -112,15 +103,14 @@ export class InventarioService {
       relations: ['producto', 'lote', 'bodega', 'ubicacion'],
     });
 
-    // -------------------------------------------------------------------
-    // 3️⃣ SI EXISTE ➜ SUMA / SI NO ➜ CREA
-    // -------------------------------------------------------------------
+    // ------------------------------------------------------------
+    // 3️⃣ SI EXISTE ➜ SUMA // SI NO ➜ CREA
+    // ------------------------------------------------------------
+    if (inventario) {
+      inventario.cantidad += cantidad;
+      inventario.cantidadDisponible += cantidad;
 
-    if (inv) {
-      inv.cantidad += cantidad;
-      inv.cantidadDisponible += cantidad;
-
-      await this.inventarioRepo.save(inv);
+      await this.inventarioRepo.save(inventario);
     } else {
       const nuevo = this.inventarioRepo.create({
         cantidad,
@@ -137,10 +127,9 @@ export class InventarioService {
       await this.inventarioRepo.save(nuevo);
     }
 
-    // -------------------------------------------------------------------
+    // ------------------------------------------------------------
     // 4️⃣ REGISTRAR MOVIMIENTO
-    // -------------------------------------------------------------------
-
+    // ------------------------------------------------------------
     const movimiento = this.movimientoRepo.create({
       tipoMovimiento: 'INGRESO',
       cantidad,
@@ -149,14 +138,10 @@ export class InventarioService {
       loteId: lote.id,
       bodegaId: bodega.id,
       ubicacionId: ubicacion.id,
-      usuarioId: null, // luego conectamos con auth
+      usuarioId: null, // futuro: conexión con auth
     });
 
     await this.movimientoRepo.save(movimiento);
-
-    // -------------------------------------------------------------------
-    // 5️⃣ RESPUESTA PROFESIONAL
-    // -------------------------------------------------------------------
 
     return {
       statusCode: 201,
@@ -169,5 +154,60 @@ export class InventarioService {
         cantidadIngresada: cantidad,
       },
     };
+  }
+
+  // =====================================================================
+  // 📌 2) OBTENER INVENTARIO COMPLETO (sin filtros)
+  // =====================================================================
+  async listarInventario() {
+    return await this.inventarioRepo.find({
+      relations: ['producto', 'lote', 'bodega', 'ubicacion'],
+      order: {
+        producto: { nombre: 'ASC' },
+        lote: { fechaCaducidad: 'ASC' },
+      },
+    });
+  }
+
+  async obtenerInventarioGeneral() {
+    return await this.listarInventario();
+  }
+
+  // =====================================================================
+  // 📌 3) OBTENER INVENTARIO CON FILTROS DINÁMICOS
+  // =====================================================================
+  async getInventario(filters: any) {
+    const query = this.inventarioRepo
+      .createQueryBuilder('inv')
+      .leftJoinAndSelect('inv.producto', 'producto')
+      .leftJoinAndSelect('inv.lote', 'lote')
+      .leftJoinAndSelect('inv.bodega', 'bodega')
+      .leftJoinAndSelect('inv.ubicacion', 'ubicacion');
+
+    if (filters.productoId) {
+      query.andWhere('producto.id = :productoId', {
+        productoId: filters.productoId,
+      });
+    }
+
+    if (filters.bodegaId) {
+      query.andWhere('bodega.id = :bodegaId', {
+        bodegaId: filters.bodegaId,
+      });
+    }
+
+    if (filters.loteId) {
+      query.andWhere('lote.id = :loteId', {
+        loteId: filters.loteId,
+      });
+    }
+
+    if (filters.estado) {
+      query.andWhere('inv.estadoStock = :estado', {
+        estado: filters.estado,
+      });
+    }
+
+    return await query.getMany();
   }
 }

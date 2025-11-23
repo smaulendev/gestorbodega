@@ -18,6 +18,9 @@ import { PickingModule } from './modules/picking/picking.module';
 import { TransferenciasModule } from './modules/transferencias/transferencias.module';
 import { ReservasModule } from './modules/reservas/reservas.module';
 
+// 📦 Nuevo módulo de movimientos
+import { MovimientosModule } from './modules/movimientos/movimientos.module';
+
 // 📊 Monitoreo y trazabilidad
 import { ReportesModule } from './modules/reportes/reportes.module';
 import { NotificacionesModule } from './modules/notificaciones/notificaciones.module';
@@ -29,18 +32,17 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
     ConfigModule.forRoot({ isGlobal: true }),
 
     // 🗄️ Conexión a la base de datos PostgreSQL
-TypeOrmModule.forRoot({
-  type: 'postgres',
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT ?? '5432', 10),
-  username: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  autoLoadEntities: true,
-  synchronize: true, // ⚠️ Solo en desarrollo
-  logging: true,
-}),
-
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT ?? '5432', 10),
+      username: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME,
+      autoLoadEntities: true,
+      synchronize: true, // ⚠️ Solo para desarrollo
+      logging: true,
+    }),
 
     // 🔐 Módulos de seguridad y acceso
     AuthModule,
@@ -57,6 +59,7 @@ TypeOrmModule.forRoot({
     PickingModule,
     TransferenciasModule,
     ReservasModule,
+    MovimientosModule, // ⬅️ AQUI INCLUIDO CORRECTAMENTE
 
     // 📊 Módulos de monitoreo, notificación y auditoría
     ReportesModule,
