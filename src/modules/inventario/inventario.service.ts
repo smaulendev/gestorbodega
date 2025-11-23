@@ -16,6 +16,7 @@ import { Ubicacion } from '../ubicaciones/entities/ubicacion.entity';
 
 // DTO
 import { IngresarStockDto } from './dto/ingresar-stock.dto';
+import { ConfirmarPickingDto } from './dto/confirmar-picking.dto';
 
 @Injectable()
 export class InventarioService {
@@ -40,59 +41,30 @@ export class InventarioService {
   ) {}
 
   // =====================================================================
-  // 📌 1) INGRESAR STOCK
+  // 📌 1) INGRESAR STOCK (HU001 LISTA)
   // =====================================================================
   async ingresarStock(dto: IngresarStockDto) {
     const { cantidad, productoId, loteId, bodegaId, ubicacionId, descripcion } =
       dto;
 
-    // ------------------------------------------------------------
-    // 1️⃣ VALIDAR ENTIDADES
-    // ------------------------------------------------------------
     const producto = await this.productoRepo.findOne({ where: { id: productoId } });
-    if (!producto)
-      throw new NotFoundException({
-        statusCode: 404,
-        errorCode: 'PRODUCT_NOT_FOUND',
-        message: `El producto con ID ${productoId} no existe.`,
-      });
+    if (!producto) throw new NotFoundException('Producto no encontrado');
 
     const lote = await this.loteRepo.findOne({ where: { id: loteId } });
-    if (!lote)
-      throw new NotFoundException({
-        statusCode: 404,
-        errorCode: 'LOT_NOT_FOUND',
-        message: `El lote con ID ${loteId} no existe.`,
-      });
+    if (!lote) throw new NotFoundException('Lote no encontrado');
 
     const bodega = await this.bodegaRepo.findOne({ where: { id: bodegaId } });
-    if (!bodega)
-      throw new NotFoundException({
-        statusCode: 404,
-        errorCode: 'WAREHOUSE_NOT_FOUND',
-        message: `La bodega con ID ${bodegaId} no existe.`,
-      });
+    if (!bodega) throw new NotFoundException('Bodega no encontrada');
 
     const ubicacion = await this.ubicacionRepo.findOne({
       where: { id: ubicacionId },
     });
-    if (!ubicacion)
-      throw new NotFoundException({
-        statusCode: 404,
-        errorCode: 'LOCATION_NOT_FOUND',
-        message: `La ubicación con ID ${ubicacionId} no existe.`,
-      });
+    if (!ubicacion) throw new NotFoundException('Ubicación no encontrada');
 
     if (cantidad <= 0)
-      throw new BadRequestException({
-        statusCode: 400,
-        errorCode: 'INVALID_QTY',
-        message: 'La cantidad debe ser mayor a 0.',
-      });
+      throw new BadRequestException('La cantidad debe ser mayor a 0.');
 
-    // ------------------------------------------------------------
-    // 2️⃣ BUSCAR INVENTARIO EXISTENTE
-    // ------------------------------------------------------------
+    // Buscar inventario existente
     const inventario = await this.inventarioRepo.findOne({
       where: {
         producto: { id: producto.id },
@@ -103,9 +75,6 @@ export class InventarioService {
       relations: ['producto', 'lote', 'bodega', 'ubicacion'],
     });
 
-    // ------------------------------------------------------------
-    // 3️⃣ SI EXISTE ➜ SUMA // SI NO ➜ CREA
-    // ------------------------------------------------------------
     if (inventario) {
       inventario.cantidad += cantidad;
       inventario.cantidadDisponible += cantidad;
@@ -127,9 +96,6 @@ export class InventarioService {
       await this.inventarioRepo.save(nuevo);
     }
 
-    // ------------------------------------------------------------
-    // 4️⃣ REGISTRAR MOVIMIENTO
-    // ------------------------------------------------------------
     const movimiento = this.movimientoRepo.create({
       tipoMovimiento: 'INGRESO',
       cantidad,
@@ -138,7 +104,7 @@ export class InventarioService {
       loteId: lote.id,
       bodegaId: bodega.id,
       ubicacionId: ubicacion.id,
-      usuarioId: null, // futuro: conexión con auth
+      usuarioId: null,
     });
 
     await this.movimientoRepo.save(movimiento);
@@ -146,18 +112,11 @@ export class InventarioService {
     return {
       statusCode: 201,
       message: 'Stock ingresado correctamente.',
-      detalle: {
-        producto: producto.nombre,
-        lote: lote.codigoLote ?? lote.id,
-        bodega: bodega.nombre,
-        ubicacion: ubicacion.nombre,
-        cantidadIngresada: cantidad,
-      },
     };
   }
 
   // =====================================================================
-  // 📌 2) OBTENER INVENTARIO COMPLETO (sin filtros)
+  // 📌 2) OBTENER INVENTARIO COMPLETO
   // =====================================================================
   async listarInventario() {
     return await this.inventarioRepo.find({
@@ -170,11 +129,11 @@ export class InventarioService {
   }
 
   async obtenerInventarioGeneral() {
-    return await this.listarInventario();
+    return this.listarInventario();
   }
 
   // =====================================================================
-  // 📌 3) OBTENER INVENTARIO CON FILTROS DINÁMICOS
+  // 📌 3) FILTROS
   // =====================================================================
   async getInventario(filters: any) {
     const query = this.inventarioRepo
@@ -184,30 +143,129 @@ export class InventarioService {
       .leftJoinAndSelect('inv.bodega', 'bodega')
       .leftJoinAndSelect('inv.ubicacion', 'ubicacion');
 
-    if (filters.productoId) {
-      query.andWhere('producto.id = :productoId', {
-        productoId: filters.productoId,
-      });
-    }
+    if (filters.productoId)
+      query.andWhere('producto.id = :productoId', filters);
 
-    if (filters.bodegaId) {
-      query.andWhere('bodega.id = :bodegaId', {
-        bodegaId: filters.bodegaId,
-      });
-    }
+    if (filters.bodegaId)
+      query.andWhere('bodega.id = :bodegaId', filters);
 
-    if (filters.loteId) {
-      query.andWhere('lote.id = :loteId', {
-        loteId: filters.loteId,
-      });
-    }
+    if (filters.loteId)
+      query.andWhere('lote.id = :loteId', filters);
 
-    if (filters.estado) {
-      query.andWhere('inv.estadoStock = :estado', {
-        estado: filters.estado,
-      });
-    }
+    if (filters.estado)
+      query.andWhere('inv.estadoStock = :estado', { estado: filters.estado });
 
     return await query.getMany();
+  }
+
+  // =====================================================================
+  // 📌 4) HU002 — FEFO: SUGERIR LOTE QUE VENCE PRIMERO
+  // =====================================================================
+  async sugerirFefoPorSku(sku: string) {
+    const producto = await this.productoRepo.findOne({
+      where: { sku: sku },
+    });
+
+    if (!producto)
+      throw new NotFoundException(`No existe producto con SKU ${sku}`);
+
+    const inventarios = await this.inventarioRepo
+      .createQueryBuilder('inv')
+      .innerJoinAndSelect('inv.lote', 'lote')
+      .innerJoinAndSelect('inv.bodega', 'bodega')
+      .innerJoinAndSelect('inv.ubicacion', 'ubicacion')
+      .where('inv.productoId = :id', { id: producto.id })
+      .andWhere('inv.cantidadDisponible > 0')
+      .andWhere("inv.estadoStock = 'Disponible'")
+      .orderBy('lote.fechaCaducidad', 'ASC')
+      .getMany();
+
+    if (!inventarios.length)
+      throw new NotFoundException('No hay stock disponible para FEFO');
+
+    const sugerido = inventarios[0];
+
+    return {
+      sku,
+      productoId: producto.id,
+      sugerido: {
+        inventarioId: sugerido.id,
+        codigoLote: sugerido.lote.codigoLote,
+        fechaCaducidad: sugerido.lote.fechaCaducidad,
+        cantidadDisponible: sugerido.cantidadDisponible,
+        bodega: sugerido.bodega.nombre,
+        bodegaId: sugerido.bodegaId,
+        ubicacion: sugerido.ubicacion.nombre,
+        ubicacionId: sugerido.ubicacionId,
+      },
+      alternativas: inventarios.map((inv) => ({
+        inventarioId: inv.id,
+        codigoLote: inv.lote.codigoLote,
+        fechaCaducidad: inv.lote.fechaCaducidad,
+        cantidadDisponible: inv.cantidadDisponible,
+        bodega: inv.bodega.nombre,
+        bodegaId: inv.bodegaId,
+        ubicacion: inv.ubicacion.nombre,
+        ubicacionId: inv.ubicacionId,
+      })),
+    };
+  }
+
+  // =====================================================================
+  // 📌 5) HU002 — CONFIRMAR PICKING FEFO FORZADO
+  // =====================================================================
+  async confirmarPickingFefo(dto: ConfirmarPickingDto) {
+    const { sku, codigoLote, cantidad } = dto;
+
+    const fefo = await this.sugerirFefoPorSku(sku);
+    const sugerido = fefo.sugerido;
+
+    if (codigoLote !== sugerido.codigoLote) {
+      throw new BadRequestException({
+        status: 'error',
+        reason: 'FEFO_BLOCKED',
+        message: `Debes recoger el lote ${sugerido.codigoLote} que vence primero.`,
+      });
+    }
+
+    const inventario = await this.inventarioRepo.findOne({
+      where: { id: sugerido.inventarioId },
+    });
+
+    if (!inventario)
+      throw new NotFoundException('Inventario no encontrado para el lote sugerido.');
+
+    if (inventario.cantidadDisponible < cantidad) {
+      throw new BadRequestException(
+        `Stock insuficiente. Disponible: ${inventario.cantidadDisponible}`,
+      );
+    }
+
+    inventario.cantidadDisponible -= cantidad;
+    inventario.cantidad -= cantidad;
+
+    if (inventario.cantidadDisponible === 0)
+      inventario.estadoStock = 'Agotado';
+
+    await this.inventarioRepo.save(inventario);
+
+    const movimiento = this.movimientoRepo.create({
+      tipoMovimiento: 'PICKING',
+      cantidad,
+      descripcion: `Picking FEFO del lote ${codigoLote}`,
+      productoId: inventario.productoId,
+      loteId: inventario.loteId,
+      bodegaId: inventario.bodegaId,
+      ubicacionId: inventario.ubicacionId,
+      usuarioId: null,
+    });
+
+    await this.movimientoRepo.save(movimiento);
+
+    return {
+      status: 'ok',
+      message: 'Picking FEFO confirmado.',
+      inventarioActualizado: inventario,
+    };
   }
 }
