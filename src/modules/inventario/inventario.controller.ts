@@ -6,7 +6,11 @@ import {
   Get,
   Query,
   Param,
+  Res,
 } from '@nestjs/common';
+
+import type { Response } from 'express';
+import { Parser } from 'json2csv';
 
 import { InventarioService } from './inventario.service';
 
@@ -19,7 +23,7 @@ export class InventarioController {
   constructor(private readonly inventarioService: InventarioService) {}
 
   // ============================================================
-  // HU001 — INGRESAR STOCK (RECEPCIÓN)
+  // HU001 — INGRESAR STOCK
   // ============================================================
   @Post('ingresar')
   @HttpCode(201)
@@ -28,16 +32,44 @@ export class InventarioController {
   }
 
   // ============================================================
-  // INVENTARIO CONSOLIDADO GENERAL
+  // INVENTARIO GENERAL (JSON)
   // ============================================================
-  // ⚠ Ajuste importante: había dos GET() iguales → conflicto
   @Get('general')
   async obtenerInventario() {
     return this.inventarioService.obtenerInventarioGeneral();
   }
 
   // ============================================================
-  // CONSULTA FILTRADA DE INVENTARIO (por producto, lote, bodega…)
+  // EXPORTACIÓN — CSV (inventario general)
+  // ============================================================
+  @Get('export')
+  async exportarInventarioGeneral(@Res() res: Response) {
+    const data = await this.inventarioService.obtenerInventarioGeneral();
+
+    const rows = data.map((inv) => ({
+      producto: inv.producto.nombre,
+      sku: inv.producto.sku,
+      lote: inv.lote.codigoLote,
+      caducidad: inv.lote.fechaCaducidad,
+      bodega: inv.bodega.nombre,
+      ubicacion: inv.ubicacion.nombre, // asegurado que existe
+      cantidad: inv.cantidad,
+      disponible: inv.cantidadDisponible,
+      reservado: inv.cantidadReservada,
+      transito: inv.cantidadTransito,
+      estado: inv.estadoStock,
+    }));
+
+    const parser = new Parser();
+    const csv = parser.parse(rows);
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment('inventario-general.csv');
+    return res.send(csv);
+  }
+
+  // ============================================================
+  // CONSULTA FILTRADA
   // ============================================================
   @Get('filtrar')
   getInventario(
@@ -55,7 +87,7 @@ export class InventarioController {
   }
 
   // ============================================================
-  // HU002 — FEFO: SUGERENCIA DE LOTE QUE VENCE PRIMERO
+  // FEFO — SUGERENCIA DE LOTE
   // ============================================================
   @Get('fefo/:sku')
   async sugerenciaFefo(@Param('sku') sku: string) {
@@ -63,7 +95,7 @@ export class InventarioController {
   }
 
   // ============================================================
-  // HU002 — FEFO: CONFIRMAR PICKING FORZADO
+  // FEFO — CONFIRMAR PICKING
   // ============================================================
   @Post('picking')
   async confirmarPicking(@Body() dto: ConfirmarPickingDto) {
