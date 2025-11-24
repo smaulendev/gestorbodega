@@ -32,16 +32,30 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
     ConfigModule.forRoot({ isGlobal: true }),
 
     // 🗄️ Base de datos
+    // TypeOrmModule.forRoot({
+    //   type: 'postgres',
+    //   host: process.env.DB_HOST,
+    //   port: parseInt(process.env.DB_PORT ?? '5432', 10),
+    //   username: process.env.DB_USER,
+    //   password: process.env.DB_PASS,
+    //   database: process.env.DB_NAME,
+    //   autoLoadEntities: true,
+    //   synchronize: true, // Solo dev
+    //   logging: true,
+    // }),
+
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT ?? '5432', 10),
-      username: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
+      host: 'db-bodega.clas4s4cenx2.us-east-2.rds.amazonaws.com', // <-- tu endpoint
+      port: 5432,
+      username: 'masterdb', // <-- tu usuario
+      password: 'seba1203', // <-- tu contraseña
+      database: 'db-bodega', // <-- nombre BD
       autoLoadEntities: true,
-      synchronize: true, // Solo dev
-      logging: true,
+      synchronize: true, // SOLO usar en desarrollo
+      ssl: {
+        rejectUnauthorized: false,
+      },
     }),
 
     // 🔐 Seguridad
