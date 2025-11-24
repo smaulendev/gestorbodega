@@ -18,10 +18,10 @@ import { PickingModule } from './modules/picking/picking.module';
 import { TransferenciasModule } from './modules/transferencias/transferencias.module';
 import { ReservasModule } from './modules/reservas/reservas.module';
 
-// 📦 Nuevo módulo de movimientos
+// 📦 Movimientos
 import { MovimientosModule } from './modules/movimientos/movimientos.module';
 
-// 📊 Monitoreo y trazabilidad
+// 📊 Monitoreo, notificaciones y auditoría
 import { ReportesModule } from './modules/reportes/reportes.module';
 import { NotificacionesModule } from './modules/notificaciones/notificaciones.module';
 import { AuditoriaModule } from './modules/auditoria/auditoria.module';
@@ -31,7 +31,7 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
     // 🌍 Configuración global
     ConfigModule.forRoot({ isGlobal: true }),
 
-    // 🗄️ Conexión a la base de datos PostgreSQL
+    // 🗄️ Base de datos
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST,
@@ -40,17 +40,17 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: true, // ⚠️ Solo para desarrollo
+      synchronize: true, // Solo dev
       logging: true,
     }),
 
-    // 🔐 Módulos de seguridad y acceso
+    // 🔐 Seguridad
     AuthModule,
     UsuariosModule,
     RolesModule,
     PermisosModule,
 
-    // 🏭 Módulos de negocio (logística y stock)
+    // 🏭 Operaciones de bodega
     ProductosModule,
     LotesModule,
     InventarioModule,
@@ -59,9 +59,9 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
     PickingModule,
     TransferenciasModule,
     ReservasModule,
-    MovimientosModule, // ⬅️ AQUI INCLUIDO CORRECTAMENTE
+    MovimientosModule,
 
-    // 📊 Módulos de monitoreo, notificación y auditoría
+    // 📊 Monitoreo
     ReportesModule,
     NotificacionesModule,
     AuditoriaModule,
