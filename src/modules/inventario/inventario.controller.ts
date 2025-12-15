@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Body,
+  Patch,
   HttpCode,
   Get,
   Query,
@@ -17,6 +18,8 @@ import { InventarioService } from './inventario.service';
 // DTOs
 import { IngresarStockDto } from './dto/ingresar-stock.dto';
 import { ConfirmarPickingDto } from './dto/confirmar-picking.dto';
+import { AjustarStockDto } from './dto/ajustar-stock.dto';
+
 
 @Controller('inventario')
 export class InventarioController {
@@ -101,4 +104,13 @@ export class InventarioController {
   async confirmarPicking(@Body() dto: ConfirmarPickingDto) {
     return this.inventarioService.confirmarPickingFefo(dto);
   }
+
+  @Patch(':id/ajustar')
+async ajustarStock(
+  @Param('id') id: string,
+  @Body() dto: AjustarStockDto,
+) {
+  return this.inventarioService.ajustarStock(+id, dto);
+}
+
 }

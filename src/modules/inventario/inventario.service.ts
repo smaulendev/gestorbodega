@@ -17,6 +17,7 @@ import { Ubicacion } from '../ubicaciones/entities/ubicacion.entity';
 // DTO
 import { IngresarStockDto } from './dto/ingresar-stock.dto';
 import { ConfirmarPickingDto } from './dto/confirmar-picking.dto';
+import { AjustarStockDto } from './dto/ajustar-stock.dto';
 
 @Injectable()
 export class InventarioService {
@@ -265,6 +266,79 @@ export class InventarioService {
     return {
       status: 'ok',
       message: 'Picking FEFO confirmado.',
+      inventarioActualizado: inventario,
+    };
+  }
+
+  // =====================================================================
+  // 📌 6) AJUSTAR STOCK MANUAL (SUMAR / RESTAR)
+  // =====================================================================
+  async ajustarStock(id: number, dto: AjustarStockDto) {
+    const { cantidad, tipo, motivo } = dto;
+
+    if (cantidad <= 0) {
+      throw new BadRequestException('La cantidad debe ser mayor a 0.');
+    }
+
+    const inventario = await this.inventarioRepo.findOne({
+      where: { id },
+      relations: ['producto', 'lote', 'bodega', 'ubicacion'],
+    });
+
+    if (!inventario) {
+      throw new NotFoundException('Registro de inventario no encontrado.');
+    }
+
+    // Validar que no quede en negativo al restar
+    if (tipo === 'NEG' && inventario.cantidadDisponible < cantidad) {
+      throw new BadRequestException(
+        `No hay stock disponible suficiente para realizar el ajuste. Disponible: ${inventario.cantidadDisponible}`,
+      );
+    }
+
+    // Aplicar ajuste
+    if (tipo === 'POS') {
+      inventario.cantidad += cantidad;
+      inventario.cantidadDisponible += cantidad;
+
+      // Si estaba agotado y ahora hay stock, lo marcamos como disponible
+      if (inventario.cantidadDisponible > 0 && inventario.estadoStock === 'Agotado') {
+        inventario.estadoStock = 'Disponible';
+      }
+    } else {
+      // Ajuste negativo
+      inventario.cantidad -= cantidad;
+      inventario.cantidadDisponible -= cantidad;
+
+      if (inventario.cantidadDisponible <= 0) {
+        inventario.cantidadDisponible = 0;
+        if (inventario.cantidad < 0) inventario.cantidad = 0;
+        inventario.estadoStock = 'Agotado';
+      }
+    }
+
+    await this.inventarioRepo.save(inventario);
+
+    const movimiento = this.movimientoRepo.create({
+      tipoMovimiento: tipo === 'POS' ? 'AJUSTE_POSITIVO' : 'AJUSTE_NEGATIVO',
+      cantidad,
+      descripcion:
+        motivo ||
+        (tipo === 'POS'
+          ? 'Ajuste positivo de stock'
+          : 'Ajuste negativo de stock'),
+      productoId: inventario.productoId,
+      loteId: inventario.loteId,
+      bodegaId: inventario.bodegaId,
+      ubicacionId: inventario.ubicacionId,
+      usuarioId: null,
+    });
+
+    await this.movimientoRepo.save(movimiento);
+
+    return {
+      status: 'ok',
+      message: 'Stock ajustado correctamente.',
       inventarioActualizado: inventario,
     };
   }
