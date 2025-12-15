@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 
 export enum RolUsuario {
   ADMIN = 'ADMIN',
@@ -22,7 +23,7 @@ export class Usuario {
   @Column({ unique: true })
   email: string;
 
-  // Hash de la contraseña
+  @Exclude()
   @Column()
   passwordHash: string;
 
@@ -32,6 +33,9 @@ export class Usuario {
     default: RolUsuario.OPERARIO,
   })
   rol: RolUsuario;
+
+  @Column({ default: true })  // 👈 NUEVO
+  activo: boolean;
 
   @CreateDateColumn()
   creadoEn: Date;
